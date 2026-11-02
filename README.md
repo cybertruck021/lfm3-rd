@@ -261,6 +261,32 @@ python -m eval.verify_checkpoint \
 
 ---
 
+## Stage 1: Recovery Distillation Training
+
+To train the 8-layer Recurrent-Depth student against the frozen 24-layer LiquidAI/LFM3-1.7B teacher across depths T in [1..5]:
+
+`ash
+python -m train.train_stage1 \
+    --student-model cybertruck32489/LFM3-1.7B-RD-v2 \
+    --teacher-model LiquidAI/LFM3-1.7B \
+    --output-dir ./LFM3-1.7B-RD-healed \
+    --dataset-name HuggingFaceFW/fineweb-edu \
+    --dataset-config sample-10BT \
+    --batch-size 2 \
+    --grad-accum-steps 4 \
+    --max-steps 1000 \
+    --seq-len 512 \
+    --lr-adapters 1e-4 \
+    --lr-backbone 2e-5 \
+    --hub-repo-id cybertruck32489/LFM3-1.7B-RD-v2
+`
+
+On 2x NVIDIA T4 GPUs (such as Kaggle), the script automatically activates zero-overhead device-split parallelism:
+* **GPU 1:** Frozen Teacher model (~3.5 GB VRAM).
+* **GPU 0:** Trainable Student model + AdamW + gradient checkpointing (~8.5 GB VRAM).
+
+---
+
 ## Citation & Attribution
 
 ```bibtex
