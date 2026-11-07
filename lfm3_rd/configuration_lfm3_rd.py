@@ -40,10 +40,6 @@ class Lfm3RDConfig(PreTrainedConfig):
     num_motifs: int = 5
     motif_size: int = 4
     num_coda_layers: int = 2
-    rank_attn: int = 640
-    rank_conv: int = 640
-    rank_kv: int = 512
-    conv_lora_groups: int = 3
 
     reasoning_mode: str = "manual"
     reasoning_effort: str | None = None
@@ -51,40 +47,79 @@ class Lfm3RDConfig(PreTrainedConfig):
     min_recurrent_loops: int = 1
     max_recurrent_loops: int = 32
     act_halting_threshold: float = 0.80
-    act_kl_prior_lambda: float = 0.20
+
+    mono_loss_weight: float = 0.25
+    settle_loss_weight: float = 0.10
+    halt_loss_weight: float = 0.50
 
     def __post_init__(self, **kwargs):
         if self.head_dim is None:
             self.head_dim = self.hidden_size // self.num_attention_heads
         if self.rope_parameters is None:
             self.rope_parameters = {
-                "full_attention": {"rope_type": "default", "rope_theta": 1_000_000.0, "partial_rotary_factor": 0.5},
-                "sliding_attention": {"rope_type": "default", "rope_theta": 10_000.0},
+                "full_attention": {
+                    "rope_type": "default",
+                    "rope_theta": 1_000_000.0,
+                    "partial_rotary_factor": 0.5,
+                },
+                "sliding_attention": {
+                    "rope_type": "default",
+                    "rope_theta": 10_000.0,
+                },
             }
         if self.layer_types is None:
             self.layer_types = [
-                "full_attention" if i % 4 == 2 else "sliding_attention" if i % 4 == 0 and i > 0 else "conv"
+                "full_attention"
+                if i % 4 == 2
+                else "sliding_attention"
+                if i % 4 == 0 and i > 0
+                else "conv"
                 for i in range(self.num_hidden_layers)
             ]
         else:
             self.layer_types = [
-                lt if lt in ("full_attention", "sliding_attention", "conv") else "conv"
+                lt
+                if lt in ("full_attention", "sliding_attention", "conv")
+                else "conv"
                 for lt in self.layer_types
             ]
-        self.tie_word_embeddings = kwargs.pop("tie_embedding", self.tie_word_embeddings)
+        self.tie_word_embeddings = kwargs.pop(
+            "tie_embedding", self.tie_word_embeddings
+        )
+        for legacy_key in (
+            "rank_attn",
+            "rank_conv",
+            "rank_kv",
+            "conv_lora_groups",
+            "act_kl_prior_lambda",
+        ):
+            kwargs.pop(legacy_key, None)
         super().__post_init__(**kwargs)
 
     def validate_architecture(self):
-        expected = self.num_prelude_layers + self.num_motifs * self.motif_size + self.num_coda_layers
+        expected = (
+            self.num_prelude_layers
+            + self.num_motifs * self.motif_size
+            + self.num_coda_layers
+        )
         if self.num_hidden_layers != expected:
-            raise ValueError(f"`num_hidden_layers` ({self.num_hidden_layers}) must equal {expected}.")
+            raise ValueError(
+                f"`num_hidden_layers` ({self.num_hidden_layers}) must equal {expected}."
+            )
         if len(self.layer_types) != self.num_hidden_layers:
             raise ValueError("`layer_types` length mismatch.")
         if self.motif_size != 4:
             raise ValueError("LFM3-RD supports `motif_size == 4` only.")
         if self.reasoning_mode not in ("manual", "auto"):
             raise ValueError("`reasoning_mode` must be 'manual' or 'auto'.")
-        if self.reasoning_effort is not None and self.reasoning_effort not in ("low", "fast", "medium", "high", "max", "auto"):
+        if self.reasoning_effort is not None and self.reasoning_effort not in (
+            "low",
+            "fast",
+            "medium",
+            "high",
+            "max",
+            "auto",
+        ):
             raise ValueError("Invalid `reasoning_effort`.")
         if not (1 <= self.recurrent_loops <= 32):
             raise ValueError("`recurrent_loops` must be in [1, 32].")
